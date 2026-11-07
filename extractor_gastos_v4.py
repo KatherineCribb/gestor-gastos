@@ -1,5 +1,4 @@
 import streamlit as st
-import google.generativeai as genai
 import json
 import os
 import tempfile
@@ -8,6 +7,8 @@ import openpyxl
 import pandas as pd
 from datetime import datetime
 import traceback
+import urllib.request
+import urllib.error
 
 st.set_page_config(page_title="Gestor de Gastos (Reporte Mensual)", page_icon="💸", layout="wide")
 
@@ -39,26 +40,22 @@ if st.button("Procesar y Actualizar Excel", type="primary"):
         st.warning("Sube al menos un comprobante de gastos.")
     else:
         try:
-            # Configuración compatible con claves tradicionales (AIzaSy) y de Google Cloud (AQ)
-            genai.configure(api_key=api_key)
-            
-            # Usamos gemini-1.5-flash que es el estándar rápido para análisis de documentos
-            model = genai.GenerativeModel('gemini-1.5-flash')
             all_expenses = []
             
             with st.spinner("Extrayendo gastos de tus comprobantes..."):
                 for file in uploaded_files:
-                    tmp_path = None
-                    uploaded_gemini_file = None
                     try:
-                        suffix = f".{file.name.split('.')[-1]}"
-                        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-                            tmp.write(file.getvalue())
-                            tmp_path = tmp.name
-
-                        uploaded_gemini_file = genai.upload_file(tmp_path)
+                        file_bytes = file.getvalue()
+                        # Detectar tipo MIME básico
+                        ext = file.name.split('.')[-1].lower()
+                        mime_type = "image/jpeg"
+                        if ext == "png": mime_type = "image/png"
+                        elif ext == "pdf": mime_type = "application/pdf"
                         
-                        prompt = f'''
+                        import base64
+                        b64_data = base64.b64encode(file_bytes).decode('utf-8')
+                        
+                        prompt_text = f'''
                         Analiza este comprobante o captura. Extrae los movimientos de SALIDA de dinero.
                         Devuelve ÚNICAMENTE un arreglo JSON con esta estructura exacta para cada gasto:
                         [{{
@@ -78,26 +75,46 @@ if st.button("Procesar y Actualizar Excel", type="primary"):
                         - Ignora ingresos.
                         - Devuelve SOLO el JSON válido, sin markdown adicional.
                         '''
-                        response = model.generate_content([uploaded_gemini_file, prompt])
                         
-                        json_str = response.text.strip()
-                        if json_str.startswith("```json"): json_str = json_str[7:-3]
-                        elif json_str.startswith("```"): json_str = json_str[3:-3]
+                        # Llamada directa mediante API REST de Google Generative Language
+                        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+                        payload = {
+                            "contents": [{
+                                "parts": [
+                                    {"text": prompt_text},
+                                    {
+                                        "inline_data": {
+                                            "mime_type": mime_type,
+                                            "data": b64_data
+                                        }
+                                    }
+                                ]
+                            }]
+                        }
+                        
+                        req = urllib.request.Request(
+                            url,
+                            data=json.dumps(payload).encode('utf-8'),
+                            headers={'Content-Type': 'application/json'},
+                            method='POST'
+                        )
+                        
+                        with urllib.request.urlopen(req) as response:
+                            res_body = json.loads(response.read().decode('utf-8'))
+                            json_str = res_body['candidates'][0]['content']['parts'][0]['text'].strip()
                             
-                        parsed_data = json.loads(json_str)
-                        if isinstance(parsed_data, list):
-                            all_expenses.extend(parsed_data)
-                        elif isinstance(parsed_data, dict):
-                            all_expenses.append(parsed_data)
+                            if json_str.startswith("```json"): json_str = json_str[7:-3]
+                            elif json_str.startswith("```"): json_str = json_str[3:-3]
+                                
+                            parsed_data = json.loads(json_str)
+                            if isinstance(parsed_data, list):
+                                all_expenses.extend(parsed_data)
+                            elif isinstance(parsed_data, dict):
+                                all_expenses.append(parsed_data)
                             
                     except Exception as ex:
                         st.error(f"Error detallado en {file.name}: {str(ex)}")
                         st.code(traceback.format_exc())
-                    finally:
-                        if uploaded_gemini_file:
-                            try: genai.delete_file(uploaded_gemini_file.name)
-                            except: pass
-                        if tmp_path and os.path.exists(tmp_path): os.remove(tmp_path)
             
             if all_expenses:
                 st.success("Extracción completada. Inyectando en tu Excel...")
