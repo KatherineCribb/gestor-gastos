@@ -40,21 +40,18 @@ if st.button("Procesar y Actualizar Excel", type="primary"):
     else:
         try:
             genai.configure(api_key=api_key)
-            # Usamos gemini-2.0-flash que es el modelo actual y evita el error 404
+            # Usamos generativemodels pasándole los datos directos sin upload_file (evita el error de discovery/key)
             model = genai.GenerativeModel('gemini-2.0-flash')
             all_expenses = []
             
             with st.spinner("Extrayendo gastos de tus comprobantes..."):
                 for file in uploaded_files:
-                    tmp_path = None
-                    uploaded_gemini_file = None
                     try:
-                        suffix = f".{file.name.split('.')[-1]}"
-                        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-                            tmp.write(file.getvalue())
-                            tmp_path = tmp.name
-
-                        uploaded_gemini_file = genai.upload_file(tmp_path)
+                        file_bytes = file.getvalue()
+                        ext = file.name.split('.')[-1].lower()
+                        mime_type = "image/jpeg"
+                        if ext == "png": mime_type = "image/png"
+                        elif ext == "pdf": mime_type = "application/pdf"
                         
                         prompt = f'''
                         Analiza este comprobante o captura. Extrae los movimientos de SALIDA de dinero.
@@ -76,7 +73,15 @@ if st.button("Procesar y Actualizar Excel", type="primary"):
                         - Ignora ingresos.
                         - Devuelve SOLO el JSON válido, sin markdown adicional.
                         '''
-                        response = model.generate_content([uploaded_gemini_file, prompt])
+                        
+                        # Pasamos los bytes de forma directa al modelo sin pasar por el gestor de archivos remoto
+                        response = model.generate_content([
+                            {
+                                'mime_type': mime_type,
+                                'data': file_bytes
+                            },
+                            prompt
+                        ])
                         
                         json_str = response.text.strip()
                         if json_str.startswith("```json"): json_str = json_str[7:-3]
@@ -91,11 +96,6 @@ if st.button("Procesar y Actualizar Excel", type="primary"):
                     except Exception as ex:
                         st.error(f"Error detallado en {file.name}: {str(ex)}")
                         st.code(traceback.format_exc())
-                    finally:
-                        if uploaded_gemini_file:
-                            try: genai.delete_file(uploaded_gemini_file.name)
-                            except: pass
-                        if tmp_path and os.path.exists(tmp_path): os.remove(tmp_path)
             
             if all_expenses:
                 st.success("Extracción completada. Inyectando en tu Excel...")
