@@ -26,7 +26,6 @@ st.markdown("### 2. Sube tus resúmenes o capturas")
 uploaded_files = st.file_uploader("Imágenes o PDFs de Wise, MP, ARQ", type=["png", "jpg", "jpeg", "pdf"], accept_multiple_files=True)
 
 if st.button("Procesar y Actualizar Excel", type="primary"):
-    # Obtener API Key exclusivamente de los Secrets de Streamlit
     try:
         api_key = st.secrets["API_KEY"]
     except Exception:
@@ -40,7 +39,10 @@ if st.button("Procesar y Actualizar Excel", type="primary"):
         st.warning("Sube al menos un comprobante de gastos.")
     else:
         try:
+            # Configuración compatible con claves tradicionales (AIzaSy) y de Google Cloud (AQ)
             genai.configure(api_key=api_key)
+            
+            # Usamos gemini-1.5-flash que es el estándar rápido para análisis de documentos
             model = genai.GenerativeModel('gemini-1.5-flash')
             all_expenses = []
             
@@ -100,15 +102,11 @@ if st.button("Procesar y Actualizar Excel", type="primary"):
             if all_expenses:
                 st.success("Extracción completada. Inyectando en tu Excel...")
                 
-                # Cargar el Excel manteniendo fórmulas y formatos
                 wb = openpyxl.load_workbook(master_file)
-                
-                # Seleccionar la pestaña Ingresos/Egresos
                 sheet_name = "Ingresos/Egresos"
                 if sheet_name in wb.sheetnames:
                     ws = wb[sheet_name]
                     
-                    # Agregar las nuevas filas
                     for exp in all_expenses:
                         ws.append([
                             exp.get('Tipo', 'Gasto'),
@@ -122,7 +120,6 @@ if st.button("Procesar y Actualizar Excel", type="primary"):
                             exp.get('Monto', 0)
                         ])
                     
-                    # Guardar en memoria para descargar
                     output = BytesIO()
                     wb.save(output)
                     output.seek(0)
@@ -136,7 +133,6 @@ if st.button("Procesar y Actualizar Excel", type="primary"):
                         type="primary"
                     )
                     
-                    # Mostrar lo que se agregó para revisión
                     st.subheader("Gastos agregados a 'Ingresos/Egresos':")
                     st.dataframe(pd.DataFrame(all_expenses))
                 else:
