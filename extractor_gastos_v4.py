@@ -12,7 +12,7 @@ import traceback
 st.set_page_config(page_title="Gestor de Gastos (Reporte Mensual)", page_icon="💸", layout="wide")
 
 st.title("💸 Tu Gestor de Gastos (Reporte Mensual)")
-st.markdown("Ahora adaptado exactamente a tu archivo **Reporte de tus cuentas**.")
+st.markdown("Ahora adaptado exactamente à tu archivo **Reporte de tus cuentas**.")
 
 with st.sidebar:
     st.header("⚙️ Configuración")
@@ -40,8 +40,8 @@ if st.button("Procesar y Actualizar Excel", type="primary"):
     else:
         try:
             genai.configure(api_key=api_key)
-            # Usamos generativemodels pasándole los datos directos sin upload_file (evita el error de discovery/key)
-            model = genai.GenerativeModel('gemini-2.0-flash')
+            # Usamos gemini-3.8-flash tal cual lo solicita la API actualizada
+            model = genai.GenerativeModel('gemini-3.8-flash')
             all_expenses = []
             
             with st.spinner("Extrayendo gastos de tus comprobantes..."):
@@ -74,7 +74,6 @@ if st.button("Procesar y Actualizar Excel", type="primary"):
                         - Devuelve SOLO el JSON válido, sin markdown adicional.
                         '''
                         
-                        # Pasamos los bytes de forma directa al modelo sin pasar por el gestor de archivos remoto
                         response = model.generate_content([
                             {
                                 'mime_type': mime_type,
