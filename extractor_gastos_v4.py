@@ -143,4 +143,16 @@ if st.button("Procesar y Actualizar Excel", type="primary"):
                 
                 st.balloons()
                 st.download_button(
-                    label="📥 Descargar tu Report
+                    label="📥 Descargar tu Reporte Actualizado",
+                    data=output,
+                    file_name=f"Reporte_Actualizado_{mes_actual}_{anio_actual}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    type="primary"
+                )
+                
+                st.subheader(f"Gastos agregados a la hoja '{target_sheet}':")
+                st.dataframe(pd.DataFrame(all_expenses))
+                
+        except Exception as general_err:
+            st.error(f"Error general en la ejecución: {str(general_err)}")
+            st.code(traceback.format_exc())
