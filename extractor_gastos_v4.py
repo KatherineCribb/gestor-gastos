@@ -2,13 +2,11 @@ import streamlit as st
 import google.generativeai as genai
 import json
 import os
-import tempfile
 from io import BytesIO
 import openpyxl
 import pandas as pd
 from datetime import datetime
 import traceback
-from PIL import Image
 
 st.set_page_config(page_title="Gestor de Gastos (Reporte Mensual)", page_icon="💸", layout="wide")
 
@@ -41,30 +39,20 @@ if st.button("Procesar y Actualizar Excel", type="primary"):
     else:
         try:
             genai.configure(api_key=api_key)
-            
-            # Fijamos el modelo gratuito y rápido que soporta tu clave
-            model = genai.GenerativeModel('gemini-3.8-flash')
+            # Modelo estándar y estable
+            model = genai.GenerativeModel('gemini-1.5-flash')
             all_expenses = []
             
-            with st.spinner("Procesando y comprimiendo comprobantes con Gemini Flash..."):
+            with st.spinner("Procesando comprobantes al instante..."):
                 for file in uploaded_files:
                     try:
+                        # Leemos el archivo directo a la memoria sin subirlo (evita el error 504)
                         file_bytes = file.getvalue()
                         ext = file.name.split('.')[-1].lower()
-                        mime_type = "image/jpeg"
                         
-                        # Evitamos el cuelgue por transparencia de capturas de Apple
-                        if ext in ["png", "jpg", "jpeg"]:
-                            img = Image.open(BytesIO(file_bytes))
-                            if img.mode in ("RGBA", "P"):
-                                img = img.convert("RGB")
-                            img.thumbnail((1600, 1600))
-                            buffered = BytesIO()
-                            img.save(buffered, format="JPEG", quality=85)
-                            file_bytes = buffered.getvalue()
-                            mime_type = "image/jpeg"
-                        elif ext == "pdf":
-                            mime_type = "application/pdf"
+                        mime_type = "image/jpeg"
+                        if ext == "png": mime_type = "image/png"
+                        elif ext == "pdf": mime_type = "application/pdf"
                         
                         prompt = f'''
                         Analiza este comprobante o captura. Extrae los movimientos de SALIDA de dinero.
@@ -81,12 +69,13 @@ if st.button("Procesar y Actualizar Excel", type="primary"):
                             "Monto": 1500.5
                         }}]
                         Reglas:
-                        - 'Dia' debe ser solo el número del día (ej. 5). Si no puedes deducirlo exacto, usa 1.
+                        - 'Dia' debe ser solo el número del día (ej. 5).
                         - 'Monto' numérico positivo, sin comillas, sin signos.
-                        - Ignora ingresos.
+                        - Ignora ingresos (ej. "Transferencia enviada", "Dinero disponible").
                         - Devuelve SOLO el JSON válido, sin markdown adicional.
                         '''
                         
+                        # Pasamos los bytes directo a la IA
                         response = model.generate_content([
                             {
                                 'mime_type': mime_type,
@@ -110,18 +99,15 @@ if st.button("Procesar y Actualizar Excel", type="primary"):
                         st.code(traceback.format_exc())
             
             if all_expenses:
-                st.success("¡Extracción veloz completada! Inyectando en tu Excel...")
+                st.success("¡Extracción completada! Inyectando en tu Excel...")
                 
                 wb = openpyxl.load_workbook(master_file)
                 
-                target_sheet = None
+                target_sheet = wb.sheetnames[0]
                 for sheet in wb.sheetnames:
-                    if "ingreso" in sheet.lower() or "egreso" in sheet.lower() or "gasto" in sheet.lower():
+                    if any(palabra in sheet.lower() for palabra in ["ingreso", "egreso", "gasto"]):
                         target_sheet = sheet
                         break
-                
-                if not target_sheet:
-                    target_sheet = wb.sheetnames[0] 
                 
                 ws = wb[target_sheet]
                 
