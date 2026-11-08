@@ -41,17 +41,39 @@ if st.button("Procesar y Actualizar Excel", type="primary"):
     else:
         try:
             genai.configure(api_key=api_key)
-            model = genai.GenerativeModel('gemini-1.5-flash')
+            
+            # Auto-Detector inteligente de modelos permitidos por tu clave API
+            modelo_elegido = 'gemini-1.5-flash'
+            try:
+                modelos_disponibles = []
+                for m in genai.list_models():
+                    if 'generateContent' in m.supported_generation_methods:
+                        modelos_disponibles.append(m.name)
+                
+                # Busca el mejor modelo que tu clave tenga permiso de usar
+                for m_name in modelos_disponibles:
+                    if '1.5-flash' in m_name:
+                        modelo_elegido = m_name.replace('models/', '')
+                        break
+                else:
+                    for m_name in modelos_disponibles:
+                        if '1.5-pro' in m_name or 'pro-vision' in m_name or 'gemini-pro' in m_name:
+                            modelo_elegido = m_name.replace('models/', '')
+                            break
+            except Exception:
+                pass # Si falla la auto-búsqueda, usa el estándar
+                
+            model = genai.GenerativeModel(modelo_elegido)
             all_expenses = []
             
-            with st.spinner("Procesando y comprimiendo comprobantes..."):
+            # Ahora la ruedita te mostrará qué modelo encontró y está usando
+            with st.spinner(f"Procesando con el modelo {modelo_elegido}..."):
                 for file in uploaded_files:
                     try:
                         file_bytes = file.getvalue()
                         ext = file.name.split('.')[-1].lower()
                         mime_type = "image/jpeg"
                         
-                        # Convertimos RGBA a RGB para evitar el error de transparencia en capturas de Mac
                         if ext in ["png", "jpg", "jpeg"]:
                             img = Image.open(BytesIO(file_bytes))
                             if img.mode in ("RGBA", "P"):
@@ -112,7 +134,6 @@ if st.button("Procesar y Actualizar Excel", type="primary"):
                 
                 wb = openpyxl.load_workbook(master_file)
                 
-                # Búsqueda flexible de la pestaña de ingresos/egresos
                 target_sheet = None
                 for sheet in wb.sheetnames:
                     if "ingreso" in sheet.lower() or "egreso" in sheet.lower() or "gasto" in sheet.lower():
@@ -120,7 +141,7 @@ if st.button("Procesar y Actualizar Excel", type="primary"):
                         break
                 
                 if not target_sheet:
-                    target_sheet = wb.sheetnames[0] # Usa la primera por defecto si no hay coincidencias
+                    target_sheet = wb.sheetnames[0] 
                 
                 ws = wb[target_sheet]
                 
