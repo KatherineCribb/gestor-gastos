@@ -8,11 +8,12 @@ import openpyxl
 import pandas as pd
 from datetime import datetime
 import traceback
+from PIL import Image
 
 st.set_page_config(page_title="Gestor de Gastos (Reporte Mensual)", page_icon="💸", layout="wide")
 
 st.title("💸 Tu Gestor de Gastos (Reporte Mensual)")
-st.markdown("Ahora adaptado exactamente à tu archivo **Reporte de tus cuentas**.")
+st.markdown("Procesamiento rápido de comprobantes y actualización automática de tu Excel.")
 
 with st.sidebar:
     st.header("⚙️ Configuración")
@@ -40,18 +41,26 @@ if st.button("Procesar y Actualizar Excel", type="primary"):
     else:
         try:
             genai.configure(api_key=api_key)
-            # Usamos gemini-3.8-flash tal cual lo solicita la API actualizada
             model = genai.GenerativeModel('gemini-3.8-flash')
             all_expenses = []
             
-            with st.spinner("Extrayendo gastos de tus comprobantes..."):
+            with st.spinner("Procesando y comprimiendo comprobantes..."):
                 for file in uploaded_files:
                     try:
                         file_bytes = file.getvalue()
                         ext = file.name.split('.')[-1].lower()
                         mime_type = "image/jpeg"
-                        if ext == "png": mime_type = "image/png"
-                        elif ext == "pdf": mime_type = "application/pdf"
+                        
+                        # Si es imagen, la comprimimos un poco para agilizar la lectura de la IA
+                        if ext in ["png", "jpg", "jpeg"]:
+                            img = Image.open(BytesIO(file_bytes))
+                            img.thumbnail((1600, 1600)) # Redimensionar para evitar pesos innecesarios
+                            buffered = BytesIO()
+                            img.save(buffered, format="JPEG", quality=85)
+                            file_bytes = buffered.getvalue()
+                            mime_type = "image/jpeg"
+                        elif ext == "pdf":
+                            mime_type = "application/pdf"
                         
                         prompt = f'''
                         Analiza este comprobante o captura. Extrae los movimientos de SALIDA de dinero.
@@ -97,43 +106,51 @@ if st.button("Procesar y Actualizar Excel", type="primary"):
                         st.code(traceback.format_exc())
             
             if all_expenses:
-                st.success("Extracción completada. Inyectando en tu Excel...")
+                st.success("¡Extracción veloz completada! Inyectando en tu Excel...")
                 
                 wb = openpyxl.load_workbook(master_file)
-                sheet_name = "Ingresos/Egresos"
-                if sheet_name in wb.sheetnames:
-                    ws = wb[sheet_name]
-                    
-                    for exp in all_expenses:
-                        ws.append([
-                            exp.get('Tipo', 'Gasto'),
-                            exp.get('Tipo de Gasto', 'variable'),
-                            exp.get('Dia', 1),
-                            exp.get('Mes', mes_actual),
-                            exp.get('Año', anio_actual),
-                            exp.get('Detalle', ''),
-                            exp.get('Categoria', 'Extras'),
-                            exp.get('Presupuesto', 'Personal'),
-                            exp.get('Monto', 0)
-                        ])
-                    
-                    output = BytesIO()
-                    wb.save(output)
-                    output.seek(0)
-                    
-                    st.balloons()
-                    st.download_button(
-                        label="📥 Descargar tu Reporte Actualizado",
-                        data=output,
-                        file_name=f"Reporte_Actualizado_{mes_actual}_{anio_actual}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        type="primary"
-                    )
-                    
-                    st.subheader("Gastos agregados a 'Ingresos/Egresos':")
-                    st.dataframe(pd.DataFrame(all_expenses))
-                else:
-                    st.error("No se encontró la pestaña 'Ingresos/Egresos' en el archivo subido.")
+                
+                # Búsqueda flexible de la pestaña de ingresos/egresos
+                target_sheet = None
+                for sheet in wb.sheetnames:
+                    if "ingreso" in sheet.lower() or "egreso" in sheet.lower() or "gasto" in sheet.lower():
+                        target_sheet = sheet
+                        break
+                
+                if not target_sheet:
+                    target_sheet = wb.sheetnames[0] # Usar la primera por defecto si no encuentra coincidencia
+                
+                ws = wb[target_sheet]
+                
+                for exp in all_expenses:
+                    ws.append([
+                        exp.get('Tipo', 'Gasto'),
+                        exp.get('Tipo de Gasto', 'variable'),
+                        exp.get('Dia', 1),
+                        exp.get('Mes', mes_actual),
+                        exp.get('Año', anio_actual),
+                        exp.get('Detalle', ''),
+                        exp.get('Categoria', 'Extras'),
+                        exp.get('Presupuesto', 'Personal'),
+                        exp.get('Monto', 0)
+                    ])
+                
+                output = BytesIO()
+                wb.save(output)
+                output.seek(0)
+                
+                st.balloons()
+                st.download_button(
+                    label="📥 Descargar tu Reporte Actualizado",
+                    data=output,
+                    file_name=f"Reporte_Actualizado_{mes_actual}_{anio_actual}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    type="primary"
+                )
+                
+                st.subheader(f"Gastos agregados a la hoja '{target_sheet}':")
+                st.dataframe(pd.DataFrame(all_expenses))
+                
         except Exception as general_err:
             st.error(f"Error general en la ejecución: {str(general_err)}")
             st.code(traceback.format_exc())
