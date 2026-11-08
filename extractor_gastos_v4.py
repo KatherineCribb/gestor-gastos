@@ -41,7 +41,7 @@ if st.button("Procesar y Actualizar Excel", type="primary"):
     else:
         try:
             genai.configure(api_key=api_key)
-            model = genai.GenerativeModel('gemini-3.8-flash')
+            model = genai.GenerativeModel('gemini-1.5-flash')
             all_expenses = []
             
             with st.spinner("Procesando y comprimiendo comprobantes..."):
@@ -51,10 +51,12 @@ if st.button("Procesar y Actualizar Excel", type="primary"):
                         ext = file.name.split('.')[-1].lower()
                         mime_type = "image/jpeg"
                         
-                        # Si es imagen, la comprimimos un poco para agilizar la lectura de la IA
+                        # Convertimos RGBA a RGB para evitar el error de transparencia en capturas de Mac
                         if ext in ["png", "jpg", "jpeg"]:
                             img = Image.open(BytesIO(file_bytes))
-                            img.thumbnail((1600, 1600)) # Redimensionar para evitar pesos innecesarios
+                            if img.mode in ("RGBA", "P"):
+                                img = img.convert("RGB")
+                            img.thumbnail((1600, 1600))
                             buffered = BytesIO()
                             img.save(buffered, format="JPEG", quality=85)
                             file_bytes = buffered.getvalue()
@@ -118,7 +120,7 @@ if st.button("Procesar y Actualizar Excel", type="primary"):
                         break
                 
                 if not target_sheet:
-                    target_sheet = wb.sheetnames[0] # Usar la primera por defecto si no encuentra coincidencia
+                    target_sheet = wb.sheetnames[0] # Usa la primera por defecto si no hay coincidencias
                 
                 ws = wb[target_sheet]
                 
@@ -141,16 +143,4 @@ if st.button("Procesar y Actualizar Excel", type="primary"):
                 
                 st.balloons()
                 st.download_button(
-                    label="📥 Descargar tu Reporte Actualizado",
-                    data=output,
-                    file_name=f"Reporte_Actualizado_{mes_actual}_{anio_actual}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    type="primary"
-                )
-                
-                st.subheader(f"Gastos agregados a la hoja '{target_sheet}':")
-                st.dataframe(pd.DataFrame(all_expenses))
-                
-        except Exception as general_err:
-            st.error(f"Error general en la ejecución: {str(general_err)}")
-            st.code(traceback.format_exc())
+                    label="📥 Descargar tu Report
