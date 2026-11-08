@@ -42,38 +42,18 @@ if st.button("Procesar y Actualizar Excel", type="primary"):
         try:
             genai.configure(api_key=api_key)
             
-            # Auto-Detector inteligente de modelos permitidos por tu clave API
-            modelo_elegido = 'gemini-1.5-flash'
-            try:
-                modelos_disponibles = []
-                for m in genai.list_models():
-                    if 'generateContent' in m.supported_generation_methods:
-                        modelos_disponibles.append(m.name)
-                
-                # Busca el mejor modelo que tu clave tenga permiso de usar
-                for m_name in modelos_disponibles:
-                    if '1.5-flash' in m_name:
-                        modelo_elegido = m_name.replace('models/', '')
-                        break
-                else:
-                    for m_name in modelos_disponibles:
-                        if '1.5-pro' in m_name or 'pro-vision' in m_name or 'gemini-pro' in m_name:
-                            modelo_elegido = m_name.replace('models/', '')
-                            break
-            except Exception:
-                pass # Si falla la auto-búsqueda, usa el estándar
-                
-            model = genai.GenerativeModel(modelo_elegido)
+            # Fijamos el modelo gratuito y rápido que soporta tu clave
+            model = genai.GenerativeModel('gemini-3.8-flash')
             all_expenses = []
             
-            # Ahora la ruedita te mostrará qué modelo encontró y está usando
-            with st.spinner(f"Procesando con el modelo {modelo_elegido}..."):
+            with st.spinner("Procesando y comprimiendo comprobantes con Gemini Flash..."):
                 for file in uploaded_files:
                     try:
                         file_bytes = file.getvalue()
                         ext = file.name.split('.')[-1].lower()
                         mime_type = "image/jpeg"
                         
+                        # Evitamos el cuelgue por transparencia de capturas de Apple
                         if ext in ["png", "jpg", "jpeg"]:
                             img = Image.open(BytesIO(file_bytes))
                             if img.mode in ("RGBA", "P"):
